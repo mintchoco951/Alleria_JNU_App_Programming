@@ -64,8 +64,8 @@ src/
 이 프로젝트는 Node.js 환경이 필요합니다.
 
 1. 저장소 클론
-   git clone https://github.com/your-username/alleria.git
-   cd alleria
+   git clone https://github.com/mintchoco951/Alleria_JNU_App_Programming
+   cd Alleria_JNU_App_Programming
 
 2. 패키지 설치
    npm install
