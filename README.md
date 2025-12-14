@@ -43,6 +43,7 @@ Alleria는 식품 성분표 이미지를 분석하여 사용자의 알레르기 
 ## 프로젝트 구조
 
 src/
+
 ├── app/                # 레이아웃 및 라우터 설정
 ├── components/         # 재사용 가능한 UI 컴포넌트 (NavBar, Loading 등)
 ├── pages/              # 주요 페이지 (Home, Scan, Result, History 등)
