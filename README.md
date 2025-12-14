@@ -51,11 +51,11 @@ src/
 
 ├── services/           # 비즈니스 로직
     
-│    ├── ocrApi.jsx      # OCR 처리 및 Worker 관리
+│        ├── ocrApi.jsx      # OCR 처리 및 Worker 관리
     
-│    ├── analysisApi.jsx # 성분 분석 및 퍼지 매칭 알고리즘
+│        ├── analysisApi.jsx # 성분 분석 및 퍼지 매칭 알고리즘
     
-│    └── storage.jsx     # 로컬 스토리지 관리
+│        └── storage.jsx     # 로컬 스토리지 관리
     
 ├── store/              # Context API 상태 관리
 
