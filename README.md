@@ -43,20 +43,21 @@ Alleria는 식품 성분표 이미지를 분석하여 사용자의 알레르기 
 ## 프로젝트 구조
 src/
 ├── app/                # 레이아웃 및 라우터 설정
-│
+
 ├── components/         # 재사용 가능한 UI 컴포넌트 (NavBar, Loading 등)
-│
+
 ├── pages/              # 주요 페이지 (Home, Scan, Result, History 등)
-│
+
 ├── services/           # 비즈니스 로직
     │
     ├── ocrApi.jsx      # OCR 처리 및 Worker 관리
-    │
+    
     ├── analysisApi.jsx # 성분 분석 및 퍼지 매칭 알고리즘
-    │
+    
     └── storage.jsx     # 로컬 스토리지 관리
+    
 ├── store/              # Context API 상태 관리
-│
+
 └── utils/              # 유틸리티 함수 (해시 생성, 요청 관리 등)
 
 ## 기술적 특이사항
