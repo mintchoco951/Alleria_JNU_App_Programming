@@ -156,6 +156,16 @@ function canonicalizeUserAllergen(term) {
  * 원재료/함유/알레르기 텍스트를 최대한 추출하여 token 리스트로 반환
  * - 분석은 이 리스트 + rawText 전체 스캔을 함께 사용
  */
+
+// 알레르겐 후보에서 제외할 단어들 (영양 항목, 메타 정보 등)
+const STOPWORDS = new Set([
+  "원재료", "원재료명", "영양", "영양정보", "영양성분", "알레르기", "알레르겐", "함유", "포함",
+  "나트륨", "탄수화물", "단백질", "지방", "당류", "열량", "칼로리", "포화지방", "트랜스지방", "콜레스테롤",
+  "대한", "대한민국", "한국", "제조", "제조원", "판매원", "고객", "상담", "유통", "보관", "냉장", "냉동",
+  "식품유형", "내용량", "중량", "용량", "규격", "원산지", "수입", "수입원", "유통기한", "소비기한",
+  "기타", "등", "및", "이상", "이하", "미만", "약", "정도", "함량", "기준", "일일", "권장"
+]);
+
 export function parseIngredients(rawText) {
   const t = normalize(rawText);
 
@@ -202,12 +212,15 @@ export function parseIngredients(rawText) {
     .map((x) => x.replace(/[^0-9A-Za-z가-힣]/g, ""))
     .filter((x) => x.length >= 1 && x.length <= 30);
 
-  // 쓰레기 토큰 제거: 영문 1글자(예: "F") 제거, 숫자/한글 1글자는 유지
-  const cleaned = tokens.filter((x) => {
-    if (x.length !== 1) return true;
-    if (/[가-힣0-9]/.test(x)) return true;
-    return false;
-  });
+  // STOPWORDS 제거 + 쓰레기 토큰 제거
+  const cleaned = tokens
+    .filter((x) => !STOPWORDS.has(x)) // 영양 항목, 메타 정보 제거
+    .filter((x) => {
+      // 영문 1글자(예: "F") 제거, 숫자/한글 1글자는 유지
+      if (x.length !== 1) return true;
+      if (/[가-힣0-9]/.test(x)) return true;
+      return false;
+    });
 
   return uniq(cleaned).slice(0, 250);
 }
@@ -316,9 +329,15 @@ function findFuzzyHitInTokens(tokens, syns) {
     // 한글/영문 외는 퍼지 제외(오탐 방지)
     if (!synIsHangul && !synIsAlpha) continue;
 
+    // 2글자 한글은 퍼지 매칭 금지: 오탐이 너무 많음 (예: "대한"→"대두")
+    if (synIsHangul && syn.length <= 2) continue;
+
     for (const tok of tokens) {
       if (synIsHangul && !isHangulToken(tok)) continue;
       if (synIsAlpha && !isAlphaToken(tok)) continue;
+
+      // 2글자 한글 토큰도 퍼지 대상에서 제외
+      if (synIsHangul && tok.length <= 2) continue;
 
       // 길이 차이가 크면 아예 제외
       if (Math.abs(tok.length - syn.length) > 1) continue;
@@ -470,7 +489,7 @@ export function analyze({ rawText, profile }) {
       riskLevel: "UNKNOWN",
       quality: q,
       message:
-        "텍스트 인식이 불충분합니다. 글자가 크게 보이도록 다시 촬영하거나 원재료/알레르기 부분을 확대해 주세요.",
+        "인식된 글자가 너무 적습니다. 원재료명·함유 부분이 화면 2/3 이상 차지하도록 가까이 촬영하세요.",
     };
   }
 

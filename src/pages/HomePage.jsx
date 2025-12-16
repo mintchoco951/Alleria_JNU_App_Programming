@@ -19,7 +19,7 @@ export default function HomePage() {
       ) : (
         <div className="flex-gap" style={{ justifyContent: 'center' }}>
           <Link to="/login" className="btn btn-secondary">로그인</Link>
-          <Link to="/register" className="btn btn-primary">시작하기</Link>
+          <Link to="/register" className="btn btn-primary">회원가입</Link>
         </div>
       )}
     </div>

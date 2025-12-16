@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import Cropper from "react-easy-crop";
 import Loading from "../components/Loading";
 import { useAuth } from "../store/authContext";
 import { useProfile } from "../store/profileContext";
@@ -29,6 +30,13 @@ export default function ScanPage() {
   const [previewUrl, setPreviewUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [cameraReady, setCameraReady] = useState(false);
+
+  // 수동 크롭 관련 상태
+  const [manualCrop, setManualCrop] = useState(false);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
 
   useEffect(() => {
     return () => {
@@ -45,24 +53,28 @@ export default function ScanPage() {
       s.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
+    setCameraReady(false);
   };
 
-  const startCamera = async () => {
-    setError("");
-    stopCamera();
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-        audio: false,
-      });
-      streamRef.current = stream;
-      if (videoRef.current) videoRef.current.srcObject = stream;
-    } catch {
-      setError(
-        "카메라 권한 또는 장치 접근에 실패했습니다. 업로드 모드로 진행하세요."
-      );
-    }
-  };
+  // ScanPage.jsx 내부
+const startCamera = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
+      audio: false,
+    });
+    if (videoRef.current) videoRef.current.srcObject = stream;
+    setCameraReady(true);
+  } catch (err) {
+    console.error("카메라 접근 실패:", err);
+    alert("카메라를 사용할 수 없습니다. 업로드 방식을 이용하세요.");
+  }
+};
+
 
   const onSelectFile = (e) => {
     setError("");
@@ -76,6 +88,56 @@ export default function ScanPage() {
     imageFileRef.current = f;
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(URL.createObjectURL(f));
+  };
+
+  // 크롭된 이미지를 File로 변환
+  const getCroppedImg = useCallback(async (imageSrc, pixelCrop) => {
+    const image = new Image();
+    image.src = imageSrc;
+    await new Promise((resolve) => { image.onload = resolve; });
+
+    const canvas = document.createElement("canvas");
+    canvas.width = pixelCrop.width;
+    canvas.height = pixelCrop.height;
+    const ctx = canvas.getContext("2d");
+
+    ctx.drawImage(
+      image,
+      pixelCrop.x,
+      pixelCrop.y,
+      pixelCrop.width,
+      pixelCrop.height,
+      0,
+      0,
+      pixelCrop.width,
+      pixelCrop.height
+    );
+
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => {
+        if (!blob) return resolve(null);
+        const file = new File([blob], `cropped-${Date.now()}.jpg`, { type: "image/jpeg" });
+        resolve(file);
+      }, "image/jpeg", 0.95);
+    });
+  }, []);
+
+  // 수동 크롭 완료 처리
+  const onCropComplete = useCallback((croppedArea, croppedPixels) => {
+    setCroppedAreaPixels(croppedPixels);
+  }, []);
+
+  const handleCropConfirm = async () => {
+    if (!croppedAreaPixels || !previewUrl) return;
+    
+    const croppedFile = await getCroppedImg(previewUrl, croppedAreaPixels);
+    if (croppedFile) {
+      setImageFile(croppedFile);
+      imageFileRef.current = croppedFile;
+    }
+    setManualCrop(false);
+    setCrop({ x: 0, y: 0 });
+    setZoom(1);
   };
 
   const onCapture = async () => {
@@ -135,7 +197,10 @@ export default function ScanPage() {
       const file = imageFileRef.current || imageFile;
       const imageHash = await hashBlobSHA256(file);
       const profileVersion = profile?.version || 1;
-      const requestKey = `${imageHash}:${profileVersion}`;
+      
+      // OCR 파이프라인 버전 (전처리/ROI 로직 변경 시 증가)
+      const OCR_PIPELINE_VERSION = "v3";
+      const requestKey = `${OCR_PIPELINE_VERSION}:${imageHash}:${profileVersion}`;
 
       if (!file) {
         setError("이미지를 먼저 선택하거나 캡처하세요.");
@@ -204,13 +269,16 @@ export default function ScanPage() {
   if (!session?.userId) return <Loading />;
 
   return (
-    <div className="glass-panel" style={{ maxWidth: 800, margin: '0 auto' }}>
+    <div className="glass-panel" style={{ maxWidth: 800, margin: "0 auto" }}>
       <h2 className="title-lg">성분 스캔</h2>
 
       {/* 모드 선택 탭 */}
-      <div className="tab-nav" style={{ marginBottom: '24px' }}>
+      <div className="tab-nav" style={{ marginBottom: "24px" }}>
         <button
-          onClick={() => { setMode("UPLOAD"); stopCamera(); }}
+          onClick={() => {
+            setMode("UPLOAD");
+            stopCamera();
+          }}
           className={`tab-btn ${mode === "UPLOAD" ? "active" : ""}`}
           disabled={loading}
         >
@@ -230,22 +298,28 @@ export default function ScanPage() {
       </div>
 
       {mode === "UPLOAD" ? (
-        <div className="card" style={{ 
-          border: '2px dashed var(--input-border)', 
-          textAlign: 'center',
-          padding: '40px',
-          cursor: 'pointer'
-        }}>
+        <div
+          className="card"
+          style={{
+            border: "2px dashed var(--input-border)",
+            textAlign: "center",
+            padding: "40px",
+            cursor: "pointer",
+          }}
+        >
           <input
             type="file"
             accept="image/*"
             onChange={onSelectFile}
             disabled={loading}
             id="file-upload"
-            style={{ display: 'none' }}
+            style={{ display: "none" }}
           />
-          <label htmlFor="file-upload" style={{ cursor: 'pointer', display: 'block' }}>
-            <p style={{ color: 'var(--text-sub)', marginBottom: '12px' }}>
+          <label
+            htmlFor="file-upload"
+            style={{ cursor: "pointer", display: "block" }}
+          >
+            <p style={{ color: "var(--text-sub)", marginBottom: "12px" }}>
               클릭하여 이미지를 선택하세요
             </p>
             <span className="badge">JPG, PNG, WEBP</span>
@@ -261,23 +335,31 @@ export default function ScanPage() {
             style={{
               width: "100%",
               maxWidth: 640,
-              margin: '0 auto',
-              display: 'block'
+              margin: "0 auto",
+              display: "block",
             }}
           />
-          <div className="flex-gap flex-center" style={{ marginTop: '16px' }}>
-            <button className="btn btn-primary" onClick={onCapture} disabled={loading}>
+          <div className="flex-gap flex-center" style={{ marginTop: "16px" }}>
+            <button
+              className="btn btn-primary"
+              onClick={onCapture}
+              disabled={loading || !cameraReady}
+            >
               캡처
             </button>
-            <button className="btn btn-secondary" onClick={stopCamera} disabled={loading}>
+            <button
+              className="btn btn-secondary"
+              onClick={stopCamera}
+              disabled={loading}
+            >
               카메라 종료
             </button>
           </div>
         </div>
       )}
 
-      {previewUrl && (
-        <div style={{ marginTop: '24px' }}>
+      {previewUrl && !manualCrop && (
+        <div style={{ marginTop: "24px" }}>
           <p className="section-title">미리보기</p>
           <img
             src={previewUrl}
@@ -286,18 +368,85 @@ export default function ScanPage() {
             style={{
               width: "100%",
               maxWidth: 640,
-              display: 'block',
-              margin: '0 auto'
+              display: "block",
+              margin: "0 auto",
             }}
           />
+          <button
+            className="btn btn-secondary"
+            onClick={() => setManualCrop(true)}
+            disabled={loading}
+            style={{ marginTop: "12px", width: "100%" }}
+          >
+            텍스트 영역 직접 선택 (정확도 향상)
+          </button>
+        </div>
+      )}
+
+      {/* 수동 크롭 모드 */}
+      {manualCrop && previewUrl && (
+        <div style={{ marginTop: "24px" }}>
+          <p className="section-title">텍스트 영역을 선택하세요</p>
+          <div
+            style={{
+              position: "relative",
+              width: "100%",
+              height: 400,
+              background: "#000",
+              borderRadius: "var(--border-radius-sm)",
+              overflow: "hidden",
+            }}
+          >
+            <Cropper
+              image={previewUrl}
+              crop={crop}
+              zoom={zoom}
+              aspect={3 / 2}
+              onCropChange={setCrop}
+              onZoomChange={setZoom}
+              onCropComplete={onCropComplete}
+            />
+          </div>
+          <div className="flex-gap" style={{ marginTop: "12px" }}>
+            <button
+              className="btn btn-primary"
+              onClick={handleCropConfirm}
+              style={{ flex: 1 }}
+            >
+              선택 완료
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={() => {
+                setManualCrop(false);
+                setCrop({ x: 0, y: 0 });
+                setZoom(1);
+              }}
+              style={{ flex: 1 }}
+            >
+              취소
+            </button>
+          </div>
+          <input
+            type="range"
+            min={1}
+            max={3}
+            step={0.1}
+            value={zoom}
+            onChange={(e) => setZoom(Number(e.target.value))}
+            style={{ width: "100%", marginTop: "12px" }}
+          />
+          <p style={{ textAlign: "center", fontSize: "0.85rem", color: "var(--text-sub)" }}>
+            확대/축소: {zoom.toFixed(1)}x
+          </p>
         </div>
       )}
 
       <div className="divider" />
 
       {/* 옵션 */}
-      <div className="grid-2" style={{ marginBottom: '20px' }}>
-        <label className={`checkbox-wrapper ${smartRoi ? 'checked' : ''}`}>
+      <div className="grid-2" style={{ marginBottom: "20px" }}>
+        <label className={`checkbox-wrapper ${smartRoi ? "checked" : ""}`}>
           <input
             type="checkbox"
             checked={smartRoi}
@@ -307,7 +456,7 @@ export default function ScanPage() {
           <span>스마트 ROI</span>
         </label>
 
-        <label className={`checkbox-wrapper ${autoRotate ? 'checked' : ''}`}>
+        <label className={`checkbox-wrapper ${autoRotate ? "checked" : ""}`}>
           <input
             type="checkbox"
             checked={autoRotate}
@@ -318,23 +467,28 @@ export default function ScanPage() {
         </label>
       </div>
 
-      <button 
-        className="btn btn-primary" 
-        onClick={onRun} 
+      <button
+        className="btn btn-primary"
+        onClick={onRun}
         disabled={loading}
-        style={{ width: '100%' }}
+        style={{ width: "100%" }}
       >
-        {loading ? `분석 중... (${Math.round(ocrProgress * 100)}%)` : "분석 실행"}
+        {loading
+          ? `분석 중... (${Math.round(ocrProgress * 100)}%)`
+          : "분석 실행"}
       </button>
 
       {loading && (
-        <div className="progress-bar" style={{ marginTop: '12px' }}>
-          <div className="progress-fill" style={{ width: `${ocrProgress * 100}%` }} />
+        <div className="progress-bar" style={{ marginTop: "12px" }}>
+          <div
+            className="progress-fill"
+            style={{ width: `${ocrProgress * 100}%` }}
+          />
         </div>
       )}
 
       {roiPreview && (
-        <div style={{ marginTop: '24px' }}>
+        <div style={{ marginTop: "24px" }}>
           <p className="section-title">자동 선택된 OCR 영역</p>
           <img
             src={roiPreview}
@@ -343,26 +497,18 @@ export default function ScanPage() {
             style={{
               width: "100%",
               maxWidth: 640,
-              display: 'block',
-              margin: '0 auto'
+              display: "block",
+              margin: "0 auto",
             }}
           />
         </div>
       )}
 
-      {/* 프로필 정보 */}
-      <div style={{ 
-        marginTop: '24px', 
-        padding: '14px', 
-        background: 'var(--input-bg)', 
-        borderRadius: 'var(--border-radius-sm)',
-        fontSize: '0.9rem',
-        color: 'var(--text-sub)'
-      }}>
-        프로필 v{profile?.version || 1} · 식이: {profile?.dietType || "NONE"} · 알레르기: {(profile?.allergens || []).join(", ") || "없음"}
-      </div>
-
-      {error && <div className="error-msg" style={{ marginTop: '16px' }}>{error}</div>}
+      {error && (
+        <div className="error-msg" style={{ marginTop: "16px" }}>
+          {error}
+        </div>
+      )}
     </div>
   );
 }

@@ -103,6 +103,24 @@ function preprocessSimple(canvas) {
   ctx.putImageData(img, 0, 0);
 }
 
+// 기존 preprocessSimple 아래에 전처리 강화 함수 추가
+function preprocessEnhanced(canvas) {
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d = img.data;
+
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], g = d[i + 1], b = d[i + 2];
+    // 단순 그레이스케일
+    const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+    // 명암 대비 강화 (조명 영향 줄이기)
+    const contrasted = Math.min(255, Math.max(0, (gray - 100) * 1.5 + 128));
+    d[i] = d[i + 1] = d[i + 2] = contrasted;
+  }
+
+  ctx.putImageData(img, 0, 0);
+}
+
 function blocksFromWords(words = []) {
   return words
     .filter((w) => (w.text || "").trim())
@@ -184,9 +202,9 @@ function computeKeywordRoiFromWords(words, keywords) {
   return { x: x0, y: y0, w: rw, h: rh };
 }
 
-function fallbackRoi(origW, origH) {
-  const y = Math.floor(origH * 0.45);
-  return { x: 0, y, w: origW, h: origH - y };
+function fallbackRoi(width, height) {
+  // 키워드/단어 기반 ROI를 못 찾았을 때는 '전체'로 간다 (안전)
+  return { x: 0, y: 0, w: width, h: height };
 }
 
 function rotateCanvas(src, deg) {
@@ -303,7 +321,7 @@ export async function runOcr({
       onProgress?.(0.38);
 
       // 2차 OCR: ROI 크롭 + 업스케일
-      const targetW = 2400;
+      const targetW = 3000;
       const s2 = clamp(targetW / roi.w, 1, 5);
 
       const c2 = makeCanvas(Math.round(roi.w * s2), Math.round(roi.h * s2));
@@ -314,6 +332,7 @@ export async function runOcr({
       );
 
       preprocessSimple(c2);
+      preprocessEnhanced(c2);
 
       try {
         roiPreviewDataUrl = c2.toDataURL("image/jpeg", 0.85);

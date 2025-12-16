@@ -106,7 +106,7 @@ a:hover { color: var(--text-sub); }
 }
 
 .nav-logo {
-  font-size: 1.4rem;
+  font-size: 2.2rem;
   font-weight: 700;
   letter-spacing: -0.5px;
   color: var(--text-main);
@@ -117,17 +117,26 @@ a:hover { color: var(--text-sub); }
   gap: 32px;
   align-items: center;
   font-weight: 500;
-  font-size: 0.95rem;
+  font-size: 1.25rem;
   color: var(--text-sub);
 }
 
-.nav-menu a {
+.nav-menu a:not(.btn) {
   padding: 8px 0;
   transition: color var(--transition-fast);
 }
 
-.nav-menu a:hover { color: var(--text-main); }
-.nav-menu a.active { color: var(--text-main); font-weight: 600; }
+.nav-menu a:not(.btn):hover { color: var(--text-main); }
+.nav-menu a:not(.btn).active { color: var(--text-main); font-weight: 600; }
+
+/* nav-menu 내부 버튼 링크 스타일 유지 */
+.nav-menu a.btn {
+  color: white;
+}
+
+.nav-menu a.btn:hover {
+  color: white;
+}
 
 /* === Glassmorphism Components === */
 .glass-panel {
@@ -238,8 +247,8 @@ a:hover { color: var(--text-sub); }
 }
 
 .btn-sm { 
-  padding: 10px 20px; 
-  font-size: 0.875rem; 
+  padding: 4px 10px; 
+  font-size: 1.1rem; 
 }
 
 .btn-lg {
